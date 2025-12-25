@@ -1,0 +1,108 @@
+version: '3.9'
+
+services:
+  postgres-primary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: postgres-primary
+    hostname: postgres-primary
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      POSTGRES_DB: ${POSTGRES_DB:-mydb}
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:-replicator_password}
+      PGDATA: /pgdata
+    volumes:
+      - postgres-primary-data:/pgdata
+      - ./conf/postgresql-primary.conf:/etc/postgresql/postgresql.conf
+      - ./init-scripts/01-init-primary.sh:/docker-entrypoint-initdb.d/01-init-primary.sh
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    ports:
+      - "5432:5432"
+    networks:
+      - postgres-cluster
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  postgres-replica-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: postgres-replica-1
+    hostname: postgres-replica-1
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      PRIMARY_HOST: postgres-primary
+      PRIMARY_PORT: 5432
+      REPLICATION_USER: replicator
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:-replicator_password}
+      REPLICA_SLOT: replica_slot_1
+      PGDATA: /pgdata
+    volumes:
+      - postgres-replica-1-data:/pgdata
+      - ./conf/postgresql-replica.conf:/etc/postgresql/postgresql.conf
+      - ./init-scripts/init-replica.sh:/usr/local/bin/init-replica.sh
+    command: bash -c "chmod +x /usr/local/bin/init-replica.sh && /usr/local/bin/init-replica.sh && postgres -c config_file=/etc/postgresql/postgresql.conf"
+    ports:
+      - "5433:5432"
+    networks:
+      - postgres-cluster
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  postgres-replica-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: postgres-replica-2
+    hostname: postgres-replica-2
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      PRIMARY_HOST: postgres-primary
+      PRIMARY_PORT: 5432
+      REPLICATION_USER: replicator
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:-replicator_password}
+      REPLICA_SLOT: replica_slot_2
+      PGDATA: /pgdata
+    volumes:
+      - postgres-replica-2-data:/pgdata
+      - ./conf/postgresql-replica.conf:/etc/postgresql/postgresql.conf
+      - ./init-scripts/init-replica.sh:/usr/local/bin/init-replica.sh
+    command: bash -c "chmod +x /usr/local/bin/init-replica.sh && /usr/local/bin/init-replica.sh && postgres -c config_file=/etc/postgresql/postgresql.conf"
+    ports:
+      - "5434:5432"
+    networks:
+      - postgres-cluster
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  postgres-cluster:
+    driver: bridge
+
+volumes:
+  postgres-primary-data:
+  postgres-replica-1-data:
+  postgres-replica-2-data:
+  
